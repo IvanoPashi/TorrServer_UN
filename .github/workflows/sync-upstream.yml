@@ -1,0 +1,30 @@
+name: Sync upstream
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Sync from upstream and keep compatibility patch
+        run: |
+          git remote add upstream https://github.com/YouROK/TorrServer.git
+          git fetch upstream master
+          git checkout -B master upstream/master
+          sed -i '/"bylampa\.online"/d' server/web/waf/referer.go
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server/web/waf/referer.go
+          git diff --cached --quiet || git commit -m "Keep bylampa.online compatible"
+          git push origin master --force-with-lease
