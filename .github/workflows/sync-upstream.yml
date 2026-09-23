@@ -3,7 +3,7 @@ name: Sync upstream
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17 */6 * * *"
+    - cron: "17 4 * * *"
 
 permissions:
   contents: write
@@ -12,19 +12,49 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
+      - name: Check 48-hour schedule
+        id: cadence
+        shell: bash
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
+            utc_day=$(( $(date -u +%s) / 86400 ))
+            if (( utc_day % 2 != 0 )); then
+              echo "run_sync=false" >> "$GITHUB_OUTPUT"
+              echo "Skipping; upstream sync runs every 48 hours."
+              exit 0
+            fi
+          fi
+          echo "run_sync=true" >> "$GITHUB_OUTPUT"
+
       - name: Checkout fork
+        if: steps.cadence.outputs.run_sync == 'true'
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Sync from upstream and keep compatibility patch
+        if: steps.cadence.outputs.run_sync == 'true'
         run: |
           git remote add upstream https://github.com/YouROK/TorrServer.git
           git fetch upstream master
-          git checkout -B master upstream/master
+          git fetch origin master
+          git checkout master
+          fork_head=$(git rev-parse HEAD)
+          if git merge-base --is-ancestor upstream/master "$fork_head"; then
+            echo "Fork is already up to date with upstream."
+            exit 0
+          fi
+          git merge --no-commit --no-ff -X theirs upstream/master
+          git restore --source="$fork_head" -- .github/workflows
           sed -i '/"bylampa\.online"/d' server/web/waf/referer.go
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add server/web/waf/referer.go
-          git diff --cached --quiet || git commit -m "Keep bylampa.online compatible"
-          git push origin master --force-with-lease
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Merge upstream and keep Bylampa compatibility"
+          else
+            git merge --abort
+            echo "No source changes to commit."
+            exit 0
+          fi
+          git push origin HEAD:master
