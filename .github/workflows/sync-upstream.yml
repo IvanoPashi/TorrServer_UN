@@ -44,11 +44,11 @@ jobs:
             echo "Fork is already up to date with upstream."
             exit 0
           fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git merge --no-commit --no-ff -X theirs upstream/master
           git restore --source="$fork_head" -- .github/workflows
           sed -i '/"bylampa\.online"/d' server/web/waf/referer.go
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           if ! git diff --cached --quiet; then
             git commit -m "Merge upstream and keep Bylampa compatibility"
